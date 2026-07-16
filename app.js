@@ -386,9 +386,9 @@ const App = () => {
                             <div className="stepper-line"></div>
                             {/* Línea de progreso dinámico */}
                             <div className="stepper-line-active" style={{
-                                width: activeStatus === 'recibido' ? '10%' :
-                                    activeStatus === 'preparando' ? '40%' :
-                                        activeStatus === 'listo' ? '70%' : '100%'
+                                width: activeStatus === 'recibido' ? '0%' :
+                                    activeStatus === 'preparando' ? '27%' :
+                                        activeStatus === 'listo' ? '54%' : '80%'
                             }}></div>
 
                             <div className={`step-item ${activeStatus === 'recibido' ? 'active' : 'completed'}`}>
