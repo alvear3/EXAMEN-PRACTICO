@@ -9,7 +9,7 @@ const App = () => {
     const [selectedTable, setSelectedTable] = useState(null);
     const [tables, setTables] = useState([
         { id: 1, number: 'Mesa 1', status: 'Disponible', orders: [] },
-        { id: 2, number: 'Mesa 2', status: 'Ocupada', orders: [{ id: 4, name: 'Refresco', price: 2.50, quantity: 1 }] },
+        { id: 2, number: 'Mesa 2', status: 'Ocupada', orders: [{ id: 4, name: 'Refresco Artesanal', price: 2.50, quantity: 1 }] },
         { id: 3, number: 'Mesa 3', status: 'Reservada', orders: [] },
         { id: 4, number: 'Mesa 4', status: 'En_Limpieza', orders: [] },
         { id: 5, number: 'Mesa 5', status: 'Disponible', orders: [] },
@@ -34,6 +34,21 @@ const App = () => {
     const [clientTable, setClientTable] = useState(null);
     const [clientCart, setClientCart] = useState([]);
 
+    // --- NUEVOS ESTADOS DE INTERFAZ (UX) ---
+    const [toasts, setToasts] = useState([]); // Sistema de Notificaciones
+    const [passwordModal, setPasswordModal] = useState({ isOpen: false, targetRole: '' }); // Modal de Contraseñas
+    const [passwordInput, setPasswordInput] = useState('');
+    const [receiptModal, setReceiptModal] = useState({ isOpen: false, data: null }); // Modal de Ticket de Pago
+
+    // Función para disparar notificaciones flotantes (Toasts)
+    const showToast = (message, type = 'success') => {
+        const id = Date.now();
+        setToasts(prevToasts => [...prevToasts, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(prevToasts => prevToasts.filter(t => t.id !== id));
+        }, 4000); // Se borra automáticamente tras 4 segundos
+    };
+
     // ==========================================
     // FUNCIONES LÓGICAS (EMPLEADO / ADMIN / POS)
     // ==========================================
@@ -41,6 +56,7 @@ const App = () => {
     const addNewTable = () => {
         const nextId = tables.length > 0 ? Math.max(...tables.map(t => t.id)) + 1 : 1;
         setTables([...tables, { id: nextId, number: `Mesa ${nextId}`, status: 'Disponible', orders: [] }]);
+        showToast(`➕ Se ha creado la Mesa ${nextId} en el sistema.`, 'success');
     };
 
     const updateTableStatus = (id, newStatus) => {
@@ -63,27 +79,58 @@ const App = () => {
         });
         setTables(updatedTables);
         setSelectedTable(updatedTables.find(t => t.id === selectedTable.id));
+        showToast(`🛒 Se agregó "${item.name}" a la ${selectedTable.number}.`, 'success');
     };
 
     const sendToKitchenPOS = () => {
-        if (!selectedTable) return alert("⚠️ Selecciona una mesa primero.");
-        if (!selectedTable.orders || selectedTable.orders.length === 0) return alert("⚠️ No puedes enviar una comanda vacía.");
-        const newTicket = { id: Date.now(), tableNumber: selectedTable.number, items: JSON.parse(JSON.stringify(selectedTable.orders)), time: new Date().toLocaleTimeString() };
+        if (!selectedTable) return showToast("⚠️ Selecciona una mesa primero.", "warning");
+        if (!selectedTable.orders || selectedTable.orders.length === 0) return showToast("⚠️ No puedes enviar una comanda vacía.", "warning");
+
+        const newTicket = {
+            id: Date.now(),
+            tableNumber: selectedTable.number,
+            items: JSON.parse(JSON.stringify(selectedTable.orders)),
+            time: new Date().toLocaleTimeString()
+        };
         setKitchenTickets([...kitchenTickets, newTicket]);
-        alert(`✅ Comanda de ${selectedTable.number} enviada a cocina exitosamente.`);
+        showToast(`👩‍🍳 Comanda de ${selectedTable.number} enviada a cocina.`, 'success');
     };
 
+    // Nueva lógica de Factura: Ahora abre el Modal en lugar de un alert molesto
     const generateBill = () => {
-        if (!selectedTable) return alert("⚠️ Error: Ninguna mesa seleccionada.");
-        if (!selectedTable.orders || selectedTable.orders.length === 0) return alert("ℹ️ La mesa no tiene pedidos registrados.");
+        if (!selectedTable) return showToast("⚠️ Error: Ninguna mesa seleccionada.", "danger");
+        if (!selectedTable.orders || selectedTable.orders.length === 0) return showToast("ℹ️ La mesa no tiene pedidos registrados.", "warning");
+
         const subtotal = selectedTable.orders.reduce((sum, item) => sum + ((typeof item.price === 'number' ? item.price : 0) * (typeof item.quantity === 'number' ? item.quantity : 1)), 0);
-        if (subtotal <= 0) return alert("⚠️ Error en los datos de la orden.");
+        if (subtotal <= 0) return showToast("⚠️ Error en los datos de la orden.", "danger");
+
         const tax = subtotal * 0.12;
         const tip = subtotal * 0.10;
         const total = subtotal + tax + tip;
-        alert(`--- RECIBO ${selectedTable.number} ---\nSubtotal: $${subtotal.toFixed(2)}\nImpuestos (12%): $${tax.toFixed(2)}\nPropina sugerida (10%): $${tip.toFixed(2)}\nTOTAL A PAGAR: $${total.toFixed(2)}\n\n✅ Cuenta cobrada y mesa liberada.`);
-        setTables(tables.map(t => t.id === selectedTable.id ? { ...t, status: 'En_Limpieza', orders: [] } : t));
+
+        setReceiptModal({
+            isOpen: true,
+            data: {
+                tableId: selectedTable.id,
+                tableName: selectedTable.number,
+                orders: selectedTable.orders,
+                subtotal,
+                tax,
+                tip,
+                total
+            }
+        });
+    };
+
+    // Confirmación final del pago (desde el modal de recibo)
+    const confirmPaymentAndClearTable = () => {
+        if (!receiptModal.data) return;
+        const { tableId, tableName } = receiptModal.data;
+
+        setTables(tables.map(t => t.id === tableId ? { ...t, status: 'En_Limpieza', orders: [] } : t));
         setSelectedTable(null);
+        setReceiptModal({ isOpen: false, data: null });
+        showToast(`✅ Cuenta cobrada con éxito. ${tableName} ahora está En Limpieza.`, 'success');
     };
 
     const addMenuItem = (e) => {
@@ -93,13 +140,13 @@ const App = () => {
         const description = e.target.elements.description.value.trim() || 'Platillo delicioso preparado al momento.';
         const image = e.target.elements.image.value.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80';
 
-        if (!name) return alert("⚠️ Error: El nombre del platillo no puede estar vacío.");
-        if (isNaN(price) || price <= 0) return alert("⚠️ Error: El precio debe ser válido.");
-        if (menu.some(item => item.name.toLowerCase() === name.toLowerCase())) return alert("⚠️ Error: Ya existe ese platillo.");
+        if (!name) return showToast("⚠️ Error: El nombre del platillo no puede estar vacío.", "danger");
+        if (isNaN(price) || price <= 0) return showToast("⚠️ Error: El precio debe ser válido.", "danger");
+        if (menu.some(item => item.name.toLowerCase() === name.toLowerCase())) return showToast("⚠️ Error: Ya existe ese platillo.", "warning");
 
         setMenu([...menu, { id: Date.now(), name, price, description, image, rating: 5.0 }]);
         e.target.reset();
-        alert("✅ Platillo añadido exitosamente al menú.");
+        showToast(`🍔 ¡"${name}" agregado al menú correctamente!`, 'success');
     };
 
     // ==========================================
@@ -107,10 +154,10 @@ const App = () => {
     // ==========================================
 
     const reserveTableAsClient = (table) => {
-        if (table.status !== 'Disponible') return alert("Esta mesa no está disponible.");
+        if (table.status !== 'Disponible') return showToast("⚠️ Esta mesa no está disponible.", "warning");
         setTables(tables.map(t => t.id === table.id ? { ...t, status: 'Reservada' } : t));
         setClientTable({ ...table, status: 'Reservada' });
-        alert(`¡Has reservado la ${table.number} exitosamente! Redirigiendo al menú...`);
+        showToast(`🎉 ¡Has reservado la ${table.number}!`, 'success');
         setView('menu_cliente');
     };
 
@@ -120,16 +167,25 @@ const App = () => {
             const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
             if (existingItem) {
                 const newQuantity = existingItem.quantity + delta;
-                return newQuantity <= 0 ? prevCart.filter(cartItem => cartItem.id !== item.id) : prevCart.map(cartItem => cartItem.id === item.id ? { ...cartItem, quantity: newQuantity } : cartItem);
+                if (newQuantity <= 0) {
+                    showToast(`❌ Se eliminó "${item.name}" de tu carrito.`, 'warning');
+                    return prevCart.filter(cartItem => cartItem.id !== item.id);
+                }
+                return prevCart.map(cartItem => cartItem.id === item.id ? { ...cartItem, quantity: newQuantity } : cartItem);
             } else {
-                return delta > 0 ? [...prevCart, { ...item, quantity: 1 }] : prevCart;
+                if (delta > 0) {
+                    showToast(`🛒 "${item.name}" añadido al carrito.`, 'success');
+                    return [...prevCart, { ...item, quantity: 1 }];
+                }
+                return prevCart;
             }
         });
     };
 
     const sendClientOrder = () => {
-        if (!clientTable) return alert("⚠️ Selecciona una mesa antes de ordenar.");
-        if (!clientCart || clientCart.length === 0) return alert("⚠️ Tu carrito está vacío.");
+        if (!clientTable) return showToast("⚠️ Selecciona una mesa antes de ordenar.", "warning");
+        if (!clientCart || clientCart.length === 0) return showToast("⚠️ Tu carrito está vacío.", "warning");
+
         const updatedTables = tables.map(t => {
             if (t.id === clientTable.id) {
                 const mergedOrders = [...t.orders];
@@ -142,37 +198,43 @@ const App = () => {
             }
             return t;
         });
+
         setTables(updatedTables);
         setKitchenTickets([...kitchenTickets, { id: Date.now(), tableNumber: clientTable.number, items: JSON.parse(JSON.stringify(clientCart)), time: new Date().toLocaleTimeString() }]);
         setClientCart([]);
-        alert("✅ ¡Tu pedido ha sido enviado a la cocina! En breve lo prepararemos.");
+        showToast("👩‍🍳 ¡Pedido enviado a cocina! Empezamos a prepararlo ya.", 'success');
     };
 
-    // --- PROTECCIÓN POR CONTRASEÑA ---
-    const handleRoleChange = (e) => {
+    // --- MANEJO DE ROLES (Ahora con Modal en vez de Prompt) ---
+    const handleRoleChangeAttempt = (e) => {
         const newRole = e.target.value;
 
-        if (newRole === 'admin') {
-            const password = prompt("🔒 Acceso Restringido.\nPor favor, ingresa la contraseña de Administrador:");
-            if (password === 'admin123') {
-                setUserRole('admin');
-                setView('admin'); // Lleva directo a la gestión del menú
-            } else {
-                alert("❌ Contraseña incorrecta. Acceso denegado.");
-                // El select volverá visualmente a userRole anterior automáticamente
-            }
-        } else if (newRole === 'empleado') {
-            const password = prompt("🔒 Acceso Restringido.\nPor favor, ingresa la contraseña de Mesero:");
-            if (password === 'mesero123') {
-                setUserRole('empleado');
-                setView('mesas'); // Lleva directo al POS
-            } else {
-                alert("❌ Contraseña incorrecta. Acceso denegado.");
-            }
+        if (newRole === 'admin' || newRole === 'empleado') {
+            // Abre el modal para requerir contraseña en vez de usar prompt()
+            setPasswordModal({
+                isOpen: true,
+                targetRole: newRole
+            });
+            setPasswordInput('');
         } else {
-            // Si elige cliente, no requiere contraseña
             setUserRole('cliente');
             setView('inicio_cliente');
+            showToast("👁️ Cambiaste al Modo Cliente.", "info");
+        }
+    };
+
+    const handlePasswordSubmit = (e) => {
+        e.preventDefault();
+        const role = passwordModal.targetRole;
+        const requiredPassword = role === 'admin' ? 'admin123' : 'mesero123';
+
+        if (passwordInput === requiredPassword) {
+            setUserRole(role);
+            setView(role === 'admin' ? 'admin' : 'mesas');
+            setPasswordModal({ isOpen: false, targetRole: '' });
+            showToast(`🔓 Acceso Concedido: Bienvenido al Modo ${role === 'admin' ? 'Administrador' : 'Mesero'}.`, 'success');
+        } else {
+            showToast("❌ Contraseña incorrecta. Acceso denegado.", "danger");
         }
     };
 
@@ -181,6 +243,31 @@ const App = () => {
     // ==========================================
     return (
         <div>
+            {/* Animaciones CSS inyectadas dinámicamente para los Toasts y Modales */}
+            <style>{`
+                @keyframes slideIn {
+                    from { transform: translateX(120%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes scaleUp {
+                    from { transform: scale(0.9); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
+                .toast-enter {
+                    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }
+                .modal-fade {
+                    animation: fadeIn 0.2s ease forwards;
+                }
+                .modal-scale {
+                    animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+                }
+            `}</style>
+
             <nav className="navbar">
                 <div className="navbar-brand">
                     <h1>🍽️ DineSync</h1>
@@ -200,7 +287,7 @@ const App = () => {
                                     className={view === 'menu_cliente' ? 'active' : ''}
                                     onClick={() => {
                                         if (!clientTable) {
-                                            alert("⚠️ Por favor, reserva una mesa primero para poder pedir del menú.");
+                                            showToast("⚠️ Por favor, reserva una mesa primero para poder pedir del menú.", "warning");
                                             setView('reservar_cliente');
                                         } else {
                                             setView('menu_cliente');
@@ -212,7 +299,7 @@ const App = () => {
                     </div>
                 </div>
                 <div className="role-switch">
-                    <select value={userRole} onChange={handleRoleChange} style={{ padding: '0.5rem', borderRadius: '5px' }}>
+                    <select value={userRole} onChange={handleRoleChangeAttempt} style={{ padding: '0.5rem', borderRadius: '5px', cursor: 'pointer', outline: 'none' }}>
                         <option value="cliente">👁️ Modo Cliente</option>
                         <option value="empleado">👔 Modo Mesero</option>
                         <option value="admin">⚙️ Modo Admin</option>
@@ -249,7 +336,7 @@ const App = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
                                 {menu.slice(0, 3).map(item => (
                                     <div key={item.id} style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', cursor: 'pointer', transition: 'transform 0.2s' }} onClick={() => {
-                                        alert(`¿Te apetece ${item.name}? ¡Reserva una mesa arriba para poder ordenarlo!`);
+                                        showToast(`😋 ¿Te apetece ${item.name}? ¡Reserva una mesa arriba para poder ordenarlo!`, 'info');
                                     }}
                                         onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
                                         onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
@@ -320,7 +407,7 @@ const App = () => {
                         <p style={{ marginBottom: '1rem', color: '#64748b' }}>Selecciona una mesa disponible (Verde) para comenzar tu orden.</p>
                         <div className="tables-grid">
                             {tables.map(table => (
-                                <div key={table.id} className={`table-card ${table.status}`} onClick={() => reserveTableAsClient(table)} style={{ opacity: table.status !== 'Disponible' ? 0.6 : 1 }}>
+                                <div key={table.id} className={`table-card ${table.status}`} onClick={() => reserveTableAsClient(table)} style={{ opacity: table.status !== 'Disponible' ? 0.6 : 1, cursor: 'pointer' }}>
                                     <h3>{table.number}</h3>
                                     <p>{table.status === 'Disponible' ? 'Tocar para Reservar' : table.status.replace('_', ' ')}</p>
                                 </div>
@@ -409,7 +496,7 @@ const App = () => {
                         </div>
                         <div className="tables-grid">
                             {tables.map(table => (
-                                <div key={table.id} className={`table-card ${table.status}`} onClick={() => setSelectedTable(table)}>
+                                <div key={table.id} className={`table-card ${table.status}`} onClick={() => setSelectedTable(table)} style={{ cursor: 'pointer' }}>
                                     <h3>{table.number}</h3>
                                     <p>{table.status.replace('_', ' ')}</p>
                                     <small>{table.orders.length > 0 ? `${table.orders.reduce((sum, o) => sum + (o.quantity || 1), 0)} items` : ''}</small>
@@ -424,7 +511,7 @@ const App = () => {
                         <div className="panel-header">
                             <h2>{selectedTable.number} - {selectedTable.status.replace('_', ' ')}</h2>
                             <div>
-                                <select onChange={(e) => { updateTableStatus(selectedTable.id, e.target.value); setSelectedTable({ ...selectedTable, status: e.target.value }); }} value={selectedTable.status} style={{ padding: '0.5rem', marginRight: '1rem', borderRadius: '4px' }}>
+                                <select onChange={(e) => { updateTableStatus(selectedTable.id, e.target.value); setSelectedTable({ ...selectedTable, status: e.target.value }); }} value={selectedTable.status} style={{ padding: '0.5rem', marginRight: '1rem', borderRadius: '4px', cursor: 'pointer' }}>
                                     <option value="Disponible">Disponible</option>
                                     <option value="Ocupada">Ocupada</option>
                                     <option value="Reservada">Reservada</option>
@@ -458,7 +545,7 @@ const App = () => {
                                 </div>
                                 <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
                                     <button className="btn btn-primary" onClick={sendToKitchenPOS} style={{ flex: 1, padding: '1rem' }}>Enviar a Cocina</button>
-                                    <button className="btn btn-success" onClick={generateBill} style={{ flex: 1, padding: '1rem' }}>Cobrar y Liberar</button>
+                                    <button className="btn btn-success" onClick={generateBill} style={{ flex: 1, padding: '1rem' }}>Generar Recibo 🧾</button>
                                 </div>
                             </div>
                         </div>
@@ -478,7 +565,10 @@ const App = () => {
                                             <li key={idx} style={{ marginBottom: '0.5rem' }}><b>{item.quantity ? `${item.quantity}x ` : ''}</b>{item.name}</li>
                                         ))}
                                     </ul>
-                                    <button className="btn btn-success" style={{ width: '100%', fontSize: '1.1rem' }} onClick={() => setKitchenTickets(kitchenTickets.filter(t => t.id !== ticket.id))}>
+                                    <button className="btn btn-success" style={{ width: '100%', fontSize: '1.1rem' }} onClick={() => {
+                                        setKitchenTickets(kitchenTickets.filter(t => t.id !== ticket.id));
+                                        showToast(`✅ Pedido de la ${ticket.tableNumber} marcado como Listo.`, 'success');
+                                    }}>
                                         Marcar como Listo ✔️
                                     </button>
                                 </div>
@@ -517,6 +607,213 @@ const App = () => {
                     </div>
                 )}
             </div>
+
+            {/* ==========================================
+                UX EXTRA: CAPA DE TOAST NOTIFICATIONS (Alertas)
+               ========================================== */}
+            <div style={{
+                position: 'fixed',
+                bottom: '20px',
+                right: '20px',
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                pointerEvents: 'none'
+            }}>
+                {toasts.map(toast => {
+                    let bgColor = '#10b981'; // Éxito (Verde)
+                    if (toast.type === 'warning') bgColor = '#f59e0b'; // Advertencia (Naranja/Amarillo)
+                    if (toast.type === 'danger') bgColor = '#ef4444'; // Error (Rojo)
+                    if (toast.type === 'info') bgColor = '#3b82f6'; // Información (Azul)
+
+                    return (
+                        <div key={toast.id} className="toast-enter" style={{
+                            backgroundColor: bgColor,
+                            color: 'white',
+                            padding: '1rem 1.5rem',
+                            borderRadius: '8px',
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            minWidth: '280px',
+                            maxWidth: '400px',
+                            fontSize: '0.95rem',
+                            fontWeight: '500',
+                            pointerEvents: 'auto'
+                        }}>
+                            <span style={{ flex: 1 }}>{toast.message}</span>
+                            <button
+                                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.2rem', fontWeight: 'bold', padding: 0, opacity: 0.8 }}
+                            >&times;</button>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* ==========================================
+                UX EXTRA: MODAL PERSONALIZADO DE CONTRASEÑA
+               ========================================== */}
+            {passwordModal.isOpen && (
+                <div className="modal-fade" style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                    zIndex: 9998,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    backdropFilter: 'blur(4px)'
+                }}>
+                    <div className="modal-scale" style={{
+                        background: 'white',
+                        padding: '2.5rem 2rem',
+                        borderRadius: '12px',
+                        width: '90%',
+                        maxWidth: '400px',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
+                        <h3 style={{ fontSize: '1.5rem', color: '#1e293b', marginBottom: '0.5rem' }}>Acceso Restringido</h3>
+                        <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                            Ingresa la contraseña para entrar al modo <b>{passwordModal.targetRole === 'admin' ? 'Administrador' : 'Mesero'}</b>.
+                        </p>
+
+                        <form onSubmit={handlePasswordSubmit}>
+                            <input
+                                type="password"
+                                placeholder="Escribe la contraseña..."
+                                value={passwordInput}
+                                onChange={(e) => setPasswordInput(e.target.value)}
+                                autoFocus
+                                required
+                                style={{
+                                    width: '100%',
+                                    padding: '0.8rem 1rem',
+                                    borderRadius: '8px',
+                                    border: '2px solid #cbd5e1',
+                                    fontSize: '1rem',
+                                    marginBottom: '1.5rem',
+                                    textAlign: 'center',
+                                    outline: 'none'
+                                }}
+                            />
+                            <div style={{ display: 'flex', gap: '1rem' }}>
+                                <button
+                                    type="button"
+                                    className="btn"
+                                    style={{ flex: 1, background: '#e2e8f0', color: '#475569' }}
+                                    onClick={() => setPasswordModal({ isOpen: false, targetRole: '' })}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary"
+                                    style={{ flex: 1 }}
+                                >
+                                    Entrar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ==========================================
+                UX EXTRA: MODAL DE TICKET DE COBRO (FACTURACIÓN)
+               ========================================== */}
+            {receiptModal.isOpen && receiptModal.data && (
+                <div className="modal-fade" style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                    zIndex: 9998,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    backdropFilter: 'blur(4px)'
+                }}>
+                    <div className="modal-scale" style={{
+                        background: 'white',
+                        padding: '2rem',
+                        borderRadius: '12px',
+                        width: '95%',
+                        maxWidth: '440px',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        position: 'relative'
+                    }}>
+                        {/* Simulación del corte de ticket arriba */}
+                        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                            <span style={{ fontSize: '1.1rem', fontWeight: 'bold', letterSpacing: '2px', color: '#64748b' }}>🧾 RECIBO DIGITAL</span>
+                            <h3 style={{ fontSize: '1.8rem', color: '#1e293b', marginTop: '0.2rem' }}>{receiptModal.data.tableName}</h3>
+                            <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>DineSync Restaurant S.A.</p>
+                        </div>
+
+                        {/* Lista de platillos del ticket */}
+                        <div style={{
+                            borderTop: '2px dashed #cbd5e1',
+                            borderBottom: '2px dashed #cbd5e1',
+                            padding: '1rem 0',
+                            margin: '1rem 0',
+                            maxHeight: '180px',
+                            overflowY: 'auto'
+                        }}>
+                            {receiptModal.data.orders.map((item, index) => (
+                                <div key={index} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', marginBottom: '0.5rem' }}>
+                                    <span style={{ color: '#334155' }}>
+                                        <b style={{ color: 'var(--primary)' }}>{item.quantity}x</b> {item.name}
+                                    </span>
+                                    <span style={{ fontWeight: 'bold', color: '#1e293b' }}>
+                                        ${(item.price * item.quantity).toFixed(2)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desglose de precios */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.9rem', color: '#475569', marginBottom: '1.5rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Subtotal:</span>
+                                <span>${receiptModal.data.subtotal.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Impuestos (IVA 12%):</span>
+                                <span>${receiptModal.data.tax.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Propina sugerida (10%):</span>
+                                <span>${receiptModal.data.tip.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.3rem', fontWeight: 'bold', color: '#1e293b', borderTop: '1px solid #f1f5f9', paddingTop: '0.6rem', marginTop: '0.2rem' }}>
+                                <span>TOTAL COBRADO:</span>
+                                <span style={{ color: '#10b981' }}>${receiptModal.data.total.toFixed(2)}</span>
+                            </div>
+                        </div>
+
+                        {/* Botones de acción */}
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button
+                                className="btn"
+                                style={{ flex: 1, background: '#f1f5f9', color: '#475569' }}
+                                onClick={() => setReceiptModal({ isOpen: false, data: null })}
+                            >
+                                Volver
+                            </button>
+                            <button
+                                className="btn btn-success"
+                                style={{ flex: 2 }}
+                                onClick={confirmPaymentAndClearTable}
+                            >
+                                Confirmar y Cerrar Mesa ✔️
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
