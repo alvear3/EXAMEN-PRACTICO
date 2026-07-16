@@ -29,6 +29,34 @@ La aplicación está dividida en tres módulos principales, accesibles mediante 
 * Monitor de tickets en tiempo real que muestra el número de mesa, la hora del pedido y los platillos solicitados.
 * Sistema para marcar comandas como "Listas" y despacharlas.
 
+## 🛰️ Seguimiento de Pedidos en Tiempo Real (Sincronización Cliente - Cocina)
+
+Una de las características principales de **DineSync** es la capacidad de simular una comunicación en tiempo real entre el cliente y el personal del restaurante utilizando el estado reactivo de React.
+
+### ¿Cómo funciona la sincronización?
+
+La aplicación utiliza un estado global (simulado a través de `useState` en la raíz del componente principal) para gestionar los tickets de cocina (`kitchenTickets`). Esto permite que múltiples vistas reaccionen a los mismos datos de manera instantánea.
+
+#### 1. El Flujo del Cliente
+* Cuando un cliente envía una orden desde su carrito, el sistema genera un ticket con un `id` único y un estado inicial de `recibido`.
+* Este ticket se almacena en el estado global de la cocina.
+* El cliente guarda una referencia de su ticket activo (`clientActiveTicketId`). Con esta referencia, la interfaz del cliente renderiza un **Stepper (Barra de progreso)** que escucha constantemente el estado actual de ese ticket.
+
+#### 2. El Flujo de Cocina / Mesero
+* Al cambiar al **Modo Mesero/Admin** y entrar a la vista de **Cocina (KDS)**, el personal visualiza todos los tickets activos.
+* El personal puede interactuar con el ticket y avanzar su estado mediante botones:
+  * `Empezar Preparación 🍳` cambia el estado a `preparando`.
+  * `Listo para Servir 🔔` cambia el estado a `listo`.
+  * `Marcar como Entregado 🍽️` cambia el estado a `entregado`.
+
+#### 3. La Magia Reactiva ✨
+Como ambas vistas (Cliente y Cocina) consumen la misma matriz de datos (`kitchenTickets`), cualquier actualización de estado realizada por el personal en la cocina **se refleja automáticamente en el Stepper del cliente**. Si cambias de vista, notarás que la barra de progreso avanza, cambia de color y activa animaciones CSS sin necesidad de recargar la página.
+
+### 🛡️ Candados de Seguridad Implementados
+Para evitar comportamientos inesperados durante este proceso, el sistema cuenta con validaciones lógicas:
+* **Anti-Spam de Clientes:** Si un cliente ya tiene un pedido en curso (estado distinto a `entregado`), el botón de pedir se bloquea preventivamente enviando una alerta ("Ya tienes un pedido en preparación").
+* **Anti-Duplicados en POS:** El mesero no puede enviar la misma comanda de una mesa a la cocina múltiples veces por accidente; el sistema verifica si la mesa ya tiene un ticket activo cocinándose.
+
 ---
 
 ## 🔒 Accesos y Credenciales
