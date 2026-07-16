@@ -2,14 +2,14 @@ const { useState } = React;
 
 const App = () => {
     // --- ESTADOS GLOBALES ---
-    const [userRole, setUserRole] = useState('cliente'); // Iniciamos como cliente para que lo pruebes rápido
-    const [view, setView] = useState('inicio_cliente'); // Vistas controladas por rol
+    const [userRole, setUserRole] = useState('cliente');
+    const [view, setView] = useState('inicio_cliente');
 
     // Estados del POS (Mesas)
     const [selectedTable, setSelectedTable] = useState(null);
     const [tables, setTables] = useState([
         { id: 1, number: 'Mesa 1', status: 'Disponible', orders: [] },
-        { id: 2, number: 'Mesa 2', status: 'Ocupada', orders: [{ name: 'Refresco', price: 2.50 }] },
+        { id: 2, number: 'Mesa 2', status: 'Ocupada', orders: [{ name: 'Refresco', price: 2.50, quantity: 1 }] },
         { id: 3, number: 'Mesa 3', status: 'Reservada', orders: [] },
         { id: 4, number: 'Mesa 4', status: 'En_Limpieza', orders: [] },
         { id: 5, number: 'Mesa 5', status: 'Disponible', orders: [] },
@@ -25,9 +25,9 @@ const App = () => {
 
     const [kitchenTickets, setKitchenTickets] = useState([]);
 
-    // --- NUEVOS ESTADOS PARA EL CLIENTE ---
-    const [clientTable, setClientTable] = useState(null); // Mesa que el cliente reservó
-    const [clientCart, setClientCart] = useState([]);     // Carrito de compras del cliente
+    // Estados para el Cliente
+    const [clientTable, setClientTable] = useState(null);
+    const [clientCart, setClientCart] = useState([]);
 
     // --- FUNCIONES LÓGICAS (EMPLEADO / ADMIN) ---
     const addNewTable = () => {
@@ -41,7 +41,17 @@ const App = () => {
 
     const addToOrderPOS = (item) => {
         const updatedTables = tables.map(t => {
-            if (t.id === selectedTable.id) return { ...t, orders: [...t.orders, item], status: 'Ocupada' };
+            if (t.id === selectedTable.id) {
+                // Buscamos si el item ya existe en la orden de la mesa
+                const existingItem = t.orders.find(o => o.id === item.id);
+                let newOrders;
+                if (existingItem) {
+                    newOrders = t.orders.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o);
+                } else {
+                    newOrders = [...t.orders, { ...item, quantity: 1 }];
+                }
+                return { ...t, orders: newOrders, status: 'Ocupada' };
+            }
             return t;
         });
         setTables(updatedTables);
@@ -56,7 +66,8 @@ const App = () => {
     };
 
     const generateBill = () => {
-        const subtotal = selectedTable.orders.reduce((sum, item) => sum + item.price, 0);
+        // Cálculo actualizado para considerar la CANTIDAD de los productos multiplicada por su PRECIO
+        const subtotal = selectedTable.orders.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
         const total = subtotal + (subtotal * 0.12) + (subtotal * 0.10);
         alert(`Cuenta cobrada. Total: $${total.toFixed(2)}`);
 
@@ -73,50 +84,72 @@ const App = () => {
         e.target.reset();
     };
 
-    // --- FUNCIONES LÓGICAS (CLIENTE) ---
-    const reserveTableAsClient = (table) => {
-        if (table.status !== 'Disponible') return alert("Esta mesa no está disponible.");
+    // --- NUEVA LÓGICA: CARRITO DEL CLIENTE CON CANTIDADES ---
+    const updateCartQuantity = (item, delta) => {
+        setClientCart(prevCart => {
+            // Buscamos si el producto ya está en el carrito
+            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
 
-        // Reservamos la mesa en el sistema global
-        setTables(tables.map(t => t.id === table.id ? { ...t, status: 'Reservada' } : t));
-        // Asignamos la mesa al cliente actual
-        setClientTable({ ...table, status: 'Reservada' });
-        alert(`¡Has reservado la ${table.number} exitosamente!`);
-        setView('menu_cliente'); // Lo mandamos al menú
+            if (existingItem) {
+                // Si existe, le sumamos o restamos la cantidad (delta)
+                const newQuantity = existingItem.quantity + delta;
+
+                // Si la cantidad baja a 0, eliminamos el producto del carrito
+                if (newQuantity <= 0) {
+                    return prevCart.filter(cartItem => cartItem.id !== item.id);
+                } else {
+                    // Actualizamos solo la cantidad de ese producto
+                    return prevCart.map(cartItem =>
+                        cartItem.id === item.id ? { ...cartItem, quantity: newQuantity } : cartItem
+                    );
+                }
+            } else {
+                // Si no existía y estamos sumando, lo agregamos con cantidad = 1
+                if (delta > 0) {
+                    return [...prevCart, { ...item, quantity: 1 }];
+                }
+                return prevCart;
+            }
+        });
     };
 
-    const addToClientCart = (item) => {
-        setClientCart([...clientCart, item]);
+    const reserveTableAsClient = (table) => {
+        if (table.status !== 'Disponible') return alert("Esta mesa no está disponible.");
+        setTables(tables.map(t => t.id === table.id ? { ...t, status: 'Reservada' } : t));
+        setClientTable({ ...table, status: 'Reservada' });
+        alert(`¡Has reservado la ${table.number} exitosamente!`);
+        setView('menu_cliente');
     };
 
     const sendClientOrder = () => {
         if (!clientTable) return alert("Debes reservar una mesa primero.");
         if (clientCart.length === 0) return alert("Tu carrito está vacío.");
 
-        // Agregamos los items del carrito a la mesa en el sistema global (POS)
         const updatedTables = tables.map(t => {
             if (t.id === clientTable.id) {
-                return { ...t, orders: [...t.orders, ...clientCart], status: 'Ocupada' };
+                // Combinamos los pedidos existentes de la mesa con los nuevos del carrito
+                const mergedOrders = [...t.orders];
+                clientCart.forEach(cartItem => {
+                    const existing = mergedOrders.find(o => o.id === cartItem.id);
+                    if (existing) {
+                        existing.quantity += cartItem.quantity;
+                    } else {
+                        mergedOrders.push({ ...cartItem });
+                    }
+                });
+                return { ...t, orders: mergedOrders, status: 'Ocupada' };
             }
             return t;
         });
         setTables(updatedTables);
 
-        // Enviamos el ticket a la cocina automáticamente
-        const newTicket = {
-            id: Date.now(),
-            tableNumber: clientTable.number,
-            items: [...clientCart],
-            time: new Date().toLocaleTimeString()
-        };
+        const newTicket = { id: Date.now(), tableNumber: clientTable.number, items: [...clientCart], time: new Date().toLocaleTimeString() };
         setKitchenTickets([...kitchenTickets, newTicket]);
 
-        // Limpiamos carrito y actualizamos el estado local del cliente
-        setClientCart([]);
+        setClientCart([]); // Vaciamos el carrito tras pedir
         alert("¡Tu pedido ha sido enviado a la cocina! En breve te atenderemos.");
     };
 
-    // Función para manejar el cambio de roles y resetear las vistas correctamente
     const handleRoleChange = (e) => {
         const newRole = e.target.value;
         setUserRole(newRole);
@@ -130,12 +163,10 @@ const App = () => {
     // --- RENDERIZADO VISUAL ---
     return (
         <div>
-            {/* Navegación Superior Dinámica */}
             <nav className="navbar">
                 <div className="navbar-brand">
                     <h1>DineSync</h1>
                     <div className="nav-buttons">
-                        {/* Botones para Empleado/Admin */}
                         {(userRole === 'admin' || userRole === 'empleado') && (
                             <>
                                 <button className={view === 'mesas' ? 'active' : ''} onClick={() => setView('mesas')}>Punto de Venta</button>
@@ -145,8 +176,6 @@ const App = () => {
                                 )}
                             </>
                         )}
-
-                        {/* Botones para Cliente */}
                         {userRole === 'cliente' && (
                             <>
                                 <button className={view === 'inicio_cliente' ? 'active' : ''} onClick={() => setView('inicio_cliente')}>Inicio</button>
@@ -156,8 +185,6 @@ const App = () => {
                         )}
                     </div>
                 </div>
-
-                {/* Selector de Modo */}
                 <div className="role-switch">
                     <span>👤 Ver plataforma como:</span>
                     <select value={userRole} onChange={handleRoleChange}>
@@ -169,7 +196,7 @@ const App = () => {
             </nav>
 
             <div className="container">
-                {/* ================= VISTAS DEL CLIENTE ================= */}
+                {/* === VISTAS DEL CLIENTE === */}
                 {view === 'inicio_cliente' && (
                     <div className="client-hero">
                         <h2>Bienvenido a DineSync Restaurant</h2>
@@ -217,15 +244,32 @@ const App = () => {
                         </div>
 
                         <div className="client-menu-grid">
-                            {/* Catálogo de Platillos */}
+                            {/* Catálogo de Platillos (CON CONTROLES + / - ) */}
                             <div className="client-menu-items">
-                                {menu.map(item => (
-                                    <div key={item.id} className="client-menu-card">
-                                        <h4>{item.name}</h4>
-                                        <p>${item.price.toFixed(2)}</p>
-                                        <button className="btn btn-primary" onClick={() => addToClientCart(item)}>Agregar al carrito</button>
-                                    </div>
-                                ))}
+                                {menu.map(item => {
+                                    // Verificamos si este producto ya está en el carrito para mostrar su cantidad
+                                    const cartItem = clientCart.find(c => c.id === item.id);
+                                    const currentQuantity = cartItem ? cartItem.quantity : 0;
+
+                                    return (
+                                        <div key={item.id} className="client-menu-card">
+                                            <h4>{item.name}</h4>
+                                            <p>${item.price.toFixed(2)}</p>
+
+                                            {currentQuantity === 0 ? (
+                                                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => updateCartQuantity(item, 1)}>
+                                                    Agregar
+                                                </button>
+                                            ) : (
+                                                <div className="quantity-controls">
+                                                    <button className="btn btn-danger" onClick={() => updateCartQuantity(item, -1)}>-</button>
+                                                    <span>{currentQuantity}</span>
+                                                    <button className="btn btn-primary" onClick={() => updateCartQuantity(item, 1)}>+</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
 
                             {/* Carrito de Compras */}
@@ -235,14 +279,14 @@ const App = () => {
                                     {clientCart.length === 0 ? <p style={{ color: '#64748b', marginTop: '1rem' }}>Tu carrito está vacío.</p> : null}
                                     {clientCart.map((item, idx) => (
                                         <div key={idx} className="order-item">
-                                            <span>{item.name}</span>
-                                            <span>${item.price.toFixed(2)}</span>
+                                            <span><b>{item.quantity}x</b> {item.name}</span>
+                                            <span>${(item.price * item.quantity).toFixed(2)}</span>
                                         </div>
                                     ))}
                                 </div>
                                 <div className="cart-total">
                                     <span>Total Estimado:</span>
-                                    <span>${clientCart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}</span>
+                                    <span>${clientCart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2)}</span>
                                 </div>
                                 <button className="btn btn-success" style={{ width: '100%', fontSize: '1.1rem' }} onClick={sendClientOrder}>
                                     Enviar Orden a Cocina
@@ -252,7 +296,7 @@ const App = () => {
                     </div>
                 )}
 
-                {/* ================= VISTAS DE EMPLEADO / ADMIN ================= */}
+                {/* === VISTAS DE EMPLEADO / ADMIN === */}
                 {view === 'mesas' && !selectedTable && (
                     <div>
                         <div className="section-header">
@@ -266,7 +310,7 @@ const App = () => {
                                 <div key={table.id} className={`table-card ${table.status}`} onClick={() => setSelectedTable(table)}>
                                     <h3>{table.number}</h3>
                                     <p>{table.status.replace('_', ' ')}</p>
-                                    <small>{table.orders.length > 0 ? `${table.orders.length} items` : ''}</small>
+                                    <small>{table.orders.length > 0 ? `${table.orders.reduce((sum, o) => sum + (o.quantity || 1), 0)} items` : ''}</small>
                                 </div>
                             ))}
                         </div>
@@ -312,8 +356,8 @@ const App = () => {
                                     {selectedTable.orders.length === 0 ? <p>Mesa sin pedidos.</p> : null}
                                     {selectedTable.orders.map((item, idx) => (
                                         <div key={idx} className="order-item">
-                                            <span>{item.name}</span>
-                                            <span>${item.price.toFixed(2)}</span>
+                                            <span><b>{item.quantity ? `${item.quantity}x ` : ''}</b>{item.name}</span>
+                                            <span>${(item.price * (item.quantity || 1)).toFixed(2)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -337,7 +381,9 @@ const App = () => {
                                     <h3>{ticket.tableNumber} <small style={{ float: 'right' }}>{ticket.time}</small></h3>
                                     <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
                                         {ticket.items.map((item, idx) => (
-                                            <li key={idx}>{item.name}</li>
+                                            <li key={idx} style={{ marginBottom: '0.3rem' }}>
+                                                <b>{item.quantity ? `${item.quantity}x ` : ''}</b>{item.name}
+                                            </li>
                                         ))}
                                     </ul>
                                     <button className="btn btn-success" style={{ width: '100%' }}
