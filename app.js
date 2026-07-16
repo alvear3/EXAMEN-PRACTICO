@@ -15,7 +15,7 @@ const App = () => {
         { id: 5, number: 'Mesa 5', status: 'Disponible', orders: [] },
     ]);
 
-    // Estado del Menú (Ahora enriquecido con imágenes y descripciones)
+    // Estado del Menú (Enriquecido con imágenes y descripciones)
     const [menu, setMenu] = useState([
         { id: 1, name: 'Hamburguesa Clásica', price: 8.50, rating: 4.8, image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80', description: 'Carne de res 100%, queso cheddar, lechuga fresca, tomate y nuestra salsa secreta.' },
         { id: 2, name: 'Pizza Margarita', price: 12.00, rating: 4.9, image: 'https://images.unsplash.com/photo-1604068549290-dea0e4a305ca?auto=format&fit=crop&w=400&q=80', description: 'Masa artesanal a la leña, salsa de tomate San Marzano, mozzarella fresca y albahaca.' },
@@ -148,10 +148,32 @@ const App = () => {
         alert("✅ ¡Tu pedido ha sido enviado a la cocina! En breve lo prepararemos.");
     };
 
+    // --- PROTECCIÓN POR CONTRASEÑA ---
     const handleRoleChange = (e) => {
         const newRole = e.target.value;
-        setUserRole(newRole);
-        setView(newRole === 'cliente' ? 'inicio_cliente' : 'mesas');
+
+        if (newRole === 'admin') {
+            const password = prompt("🔒 Acceso Restringido.\nPor favor, ingresa la contraseña de Administrador:");
+            if (password === 'admin123') {
+                setUserRole('admin');
+                setView('admin'); // Lleva directo a la gestión del menú
+            } else {
+                alert("❌ Contraseña incorrecta. Acceso denegado.");
+                // El select volverá visualmente a userRole anterior automáticamente
+            }
+        } else if (newRole === 'empleado') {
+            const password = prompt("🔒 Acceso Restringido.\nPor favor, ingresa la contraseña de Mesero:");
+            if (password === 'mesero123') {
+                setUserRole('empleado');
+                setView('mesas'); // Lleva directo al POS
+            } else {
+                alert("❌ Contraseña incorrecta. Acceso denegado.");
+            }
+        } else {
+            // Si elige cliente, no requiere contraseña
+            setUserRole('cliente');
+            setView('inicio_cliente');
+        }
     };
 
     // ==========================================
