@@ -9,7 +9,7 @@ const App = () => {
     const [selectedTable, setSelectedTable] = useState(null);
     const [tables, setTables] = useState([
         { id: 1, number: 'Mesa 1', status: 'Disponible', orders: [] },
-        { id: 2, number: 'Mesa 2', status: 'Ocupada', orders: [{ name: 'Refresco', price: 2.50, quantity: 1 }] },
+        { id: 2, number: 'Mesa 2', status: 'Ocupada', orders: [{ id: 4, name: 'Refresco', price: 2.50, quantity: 1 }] },
         { id: 3, number: 'Mesa 3', status: 'Reservada', orders: [] },
         { id: 4, number: 'Mesa 4', status: 'En_Limpieza', orders: [] },
         { id: 5, number: 'Mesa 5', status: 'Disponible', orders: [] },
@@ -29,7 +29,10 @@ const App = () => {
     const [clientTable, setClientTable] = useState(null);
     const [clientCart, setClientCart] = useState([]);
 
-    // --- FUNCIONES LÓGICAS (EMPLEADO / ADMIN) ---
+    // ==========================================
+    // FUNCIONES LÓGICAS (EMPLEADO / ADMIN / POS)
+    // ==========================================
+
     const addNewTable = () => {
         const nextId = tables.length > 0 ? Math.max(...tables.map(t => t.id)) + 1 : 1;
         setTables([...tables, { id: nextId, number: `Mesa ${nextId}`, status: 'Disponible', orders: [] }]);
@@ -42,7 +45,6 @@ const App = () => {
     const addToOrderPOS = (item) => {
         const updatedTables = tables.map(t => {
             if (t.id === selectedTable.id) {
-                // Buscamos si el item ya existe en la orden de la mesa
                 const existingItem = t.orders.find(o => o.id === item.id);
                 let newOrders;
                 if (existingItem) {
@@ -58,60 +60,79 @@ const App = () => {
         setSelectedTable(updatedTables.find(t => t.id === selectedTable.id));
     };
 
+    // [VALIDADO] Enviar a cocina desde el POS
     const sendToKitchenPOS = () => {
-        if (selectedTable.orders.length === 0) return alert("No hay pedidos para enviar.");
-        const newTicket = { id: Date.now(), tableNumber: selectedTable.number, items: [...selectedTable.orders], time: new Date().toLocaleTimeString() };
+        if (!selectedTable) return alert("⚠️ Selecciona una mesa primero.");
+
+        if (!selectedTable.orders || selectedTable.orders.length === 0) {
+            return alert("⚠️ No puedes enviar una comanda vacía. Agrega productos de la lista.");
+        }
+
+        const newTicket = {
+            id: Date.now(),
+            tableNumber: selectedTable.number,
+            items: JSON.parse(JSON.stringify(selectedTable.orders)),
+            time: new Date().toLocaleTimeString()
+        };
+
         setKitchenTickets([...kitchenTickets, newTicket]);
-        alert(`Comanda enviada a cocina para ${selectedTable.number}`);
+        alert(`✅ Comanda de ${selectedTable.number} enviada a cocina exitosamente.`);
     };
 
+    // [VALIDADO] Cobrar y generar cuenta
     const generateBill = () => {
-        // Cálculo actualizado para considerar la CANTIDAD de los productos multiplicada por su PRECIO
-        const subtotal = selectedTable.orders.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
-        const total = subtotal + (subtotal * 0.12) + (subtotal * 0.10);
-        alert(`Cuenta cobrada. Total: $${total.toFixed(2)}`);
+        if (!selectedTable) return alert("⚠️ Error: Ninguna mesa seleccionada.");
+
+        if (!selectedTable.orders || selectedTable.orders.length === 0) {
+            return alert("ℹ️ No se puede generar una cuenta: La mesa no tiene pedidos registrados.");
+        }
+
+        const subtotal = selectedTable.orders.reduce((sum, item) => {
+            const itemPrice = typeof item.price === 'number' ? item.price : 0;
+            const itemQuantity = typeof item.quantity === 'number' ? item.quantity : 1;
+            return sum + (itemPrice * itemQuantity);
+        }, 0);
+
+        if (subtotal <= 0) return alert("⚠️ Error en los datos de la orden. Total inválido.");
+
+        const tax = subtotal * 0.12;
+        const tip = subtotal * 0.10;
+        const total = subtotal + tax + tip;
+
+        alert(`--- RECIBO ${selectedTable.number} ---\nSubtotal: $${subtotal.toFixed(2)}\nImpuestos (12%): $${tax.toFixed(2)}\nPropina sugerida (10%): $${tip.toFixed(2)}\nTOTAL A PAGAR: $${total.toFixed(2)}\n\n✅ Cuenta cobrada y mesa liberada.`);
 
         setTables(tables.map(t => t.id === selectedTable.id ? { ...t, status: 'En_Limpieza', orders: [] } : t));
         setSelectedTable(null);
     };
 
+    // [VALIDADO] Agregar platillo al menú
     const addMenuItem = (e) => {
         e.preventDefault();
-        const name = e.target.elements.name.value;
+
+        const name = e.target.elements.name.value.trim();
         const price = parseFloat(e.target.elements.price.value);
-        if (!name || !price) return;
+
+        if (!name) {
+            return alert("⚠️ Error: El nombre del platillo no puede estar vacío.");
+        }
+
+        if (isNaN(price) || price <= 0) {
+            return alert("⚠️ Error: El precio debe ser un número válido mayor a $0.00.");
+        }
+
+        const exists = menu.some(item => item.name.toLowerCase() === name.toLowerCase());
+        if (exists) {
+            return alert("⚠️ Error: Ya existe un platillo con ese nombre en el menú.");
+        }
+
         setMenu([...menu, { id: Date.now(), name, price }]);
         e.target.reset();
+        alert("✅ Platillo añadido exitosamente al menú.");
     };
 
-    // --- NUEVA LÓGICA: CARRITO DEL CLIENTE CON CANTIDADES ---
-    const updateCartQuantity = (item, delta) => {
-        setClientCart(prevCart => {
-            // Buscamos si el producto ya está en el carrito
-            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
-
-            if (existingItem) {
-                // Si existe, le sumamos o restamos la cantidad (delta)
-                const newQuantity = existingItem.quantity + delta;
-
-                // Si la cantidad baja a 0, eliminamos el producto del carrito
-                if (newQuantity <= 0) {
-                    return prevCart.filter(cartItem => cartItem.id !== item.id);
-                } else {
-                    // Actualizamos solo la cantidad de ese producto
-                    return prevCart.map(cartItem =>
-                        cartItem.id === item.id ? { ...cartItem, quantity: newQuantity } : cartItem
-                    );
-                }
-            } else {
-                // Si no existía y estamos sumando, lo agregamos con cantidad = 1
-                if (delta > 0) {
-                    return [...prevCart, { ...item, quantity: 1 }];
-                }
-                return prevCart;
-            }
-        });
-    };
+    // ==========================================
+    // FUNCIONES LÓGICAS (CLIENTE)
+    // ==========================================
 
     const reserveTableAsClient = (table) => {
         if (table.status !== 'Disponible') return alert("Esta mesa no está disponible.");
@@ -121,13 +142,42 @@ const App = () => {
         setView('menu_cliente');
     };
 
+    // [VALIDADO] Modificar carrito del cliente
+    const updateCartQuantity = (item, delta) => {
+        if (!item || !item.id || typeof delta !== 'number') {
+            console.error("Error: Datos de producto inválidos al modificar carrito.");
+            return;
+        }
+
+        setClientCart(prevCart => {
+            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
+
+            if (existingItem) {
+                const newQuantity = existingItem.quantity + delta;
+
+                if (newQuantity <= 0) {
+                    return prevCart.filter(cartItem => cartItem.id !== item.id);
+                } else {
+                    return prevCart.map(cartItem =>
+                        cartItem.id === item.id ? { ...cartItem, quantity: newQuantity } : cartItem
+                    );
+                }
+            } else {
+                if (delta > 0) {
+                    return [...prevCart, { ...item, quantity: 1 }];
+                }
+                return prevCart;
+            }
+        });
+    };
+
+    // [VALIDADO] Enviar orden del cliente
     const sendClientOrder = () => {
-        if (!clientTable) return alert("Debes reservar una mesa primero.");
-        if (clientCart.length === 0) return alert("Tu carrito está vacío.");
+        if (!clientTable) return alert("⚠️ Por favor, selecciona y reserva una mesa en la sección 'Inicio' antes de ordenar.");
+        if (!clientCart || clientCart.length === 0) return alert("⚠️ Tu carrito está vacío. Agrega platillos antes de ordenar.");
 
         const updatedTables = tables.map(t => {
             if (t.id === clientTable.id) {
-                // Combinamos los pedidos existentes de la mesa con los nuevos del carrito
                 const mergedOrders = [...t.orders];
                 clientCart.forEach(cartItem => {
                     const existing = mergedOrders.find(o => o.id === cartItem.id);
@@ -141,13 +191,19 @@ const App = () => {
             }
             return t;
         });
+
         setTables(updatedTables);
 
-        const newTicket = { id: Date.now(), tableNumber: clientTable.number, items: [...clientCart], time: new Date().toLocaleTimeString() };
-        setKitchenTickets([...kitchenTickets, newTicket]);
+        const newTicket = {
+            id: Date.now(),
+            tableNumber: clientTable.number,
+            items: JSON.parse(JSON.stringify(clientCart)),
+            time: new Date().toLocaleTimeString()
+        };
 
-        setClientCart([]); // Vaciamos el carrito tras pedir
-        alert("¡Tu pedido ha sido enviado a la cocina! En breve te atenderemos.");
+        setKitchenTickets([...kitchenTickets, newTicket]);
+        setClientCart([]);
+        alert("✅ ¡Tu pedido ha sido enviado a la cocina! En breve lo prepararemos.");
     };
 
     const handleRoleChange = (e) => {
@@ -160,7 +216,9 @@ const App = () => {
         }
     };
 
-    // --- RENDERIZADO VISUAL ---
+    // ==========================================
+    // RENDERIZADO VISUAL (HTML/JSX)
+    // ==========================================
     return (
         <div>
             <nav className="navbar">
@@ -244,10 +302,9 @@ const App = () => {
                         </div>
 
                         <div className="client-menu-grid">
-                            {/* Catálogo de Platillos (CON CONTROLES + / - ) */}
+                            {/* Catálogo de Platillos */}
                             <div className="client-menu-items">
                                 {menu.map(item => {
-                                    // Verificamos si este producto ya está en el carrito para mostrar su cantidad
                                     const cartItem = clientCart.find(c => c.id === item.id);
                                     const currentQuantity = cartItem ? cartItem.quantity : 0;
 
