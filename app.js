@@ -60,7 +60,6 @@ const App = () => {
         setSelectedTable(updatedTables.find(t => t.id === selectedTable.id));
     };
 
-    // [VALIDADO] Enviar a cocina desde el POS
     const sendToKitchenPOS = () => {
         if (!selectedTable) return alert("⚠️ Selecciona una mesa primero.");
 
@@ -79,7 +78,6 @@ const App = () => {
         alert(`✅ Comanda de ${selectedTable.number} enviada a cocina exitosamente.`);
     };
 
-    // [VALIDADO] Cobrar y generar cuenta
     const generateBill = () => {
         if (!selectedTable) return alert("⚠️ Error: Ninguna mesa seleccionada.");
 
@@ -105,7 +103,6 @@ const App = () => {
         setSelectedTable(null);
     };
 
-    // [VALIDADO] Agregar platillo al menú
     const addMenuItem = (e) => {
         e.preventDefault();
 
@@ -142,7 +139,6 @@ const App = () => {
         setView('menu_cliente');
     };
 
-    // [VALIDADO] Modificar carrito del cliente
     const updateCartQuantity = (item, delta) => {
         if (!item || !item.id || typeof delta !== 'number') {
             console.error("Error: Datos de producto inválidos al modificar carrito.");
@@ -171,7 +167,6 @@ const App = () => {
         });
     };
 
-    // [VALIDADO] Enviar orden del cliente
     const sendClientOrder = () => {
         if (!clientTable) return alert("⚠️ Por favor, selecciona y reserva una mesa en la sección 'Inicio' antes de ordenar.");
         if (!clientCart || clientCart.length === 0) return alert("⚠️ Tu carrito está vacío. Agrega platillos antes de ordenar.");
@@ -238,7 +233,21 @@ const App = () => {
                             <>
                                 <button className={view === 'inicio_cliente' ? 'active' : ''} onClick={() => setView('inicio_cliente')}>Inicio</button>
                                 <button className={view === 'reservar_cliente' ? 'active' : ''} onClick={() => setView('reservar_cliente')}>Reservar Mesa</button>
-                                <button className={view === 'menu_cliente' ? 'active' : ''} onClick={() => setView('menu_cliente')}>Pedir Menú</button>
+
+                                {/* AQUÍ ESTÁ LA NUEVA RESTRICCIÓN PARA EL BOTÓN DE PEDIR MENÚ */}
+                                <button
+                                    className={view === 'menu_cliente' ? 'active' : ''}
+                                    onClick={() => {
+                                        if (!clientTable) {
+                                            alert("⚠️ Por favor, reserva una mesa primero para poder pedir del menú.");
+                                            setView('reservar_cliente');
+                                        } else {
+                                            setView('menu_cliente');
+                                        }
+                                    }}
+                                >
+                                    Pedir Menú
+                                </button>
                             </>
                         )}
                     </div>
